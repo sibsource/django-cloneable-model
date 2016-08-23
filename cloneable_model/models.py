@@ -79,15 +79,15 @@ class CloneableModelMixin(object):
                 label_lower = obj._meta.label_lower
 
                 if obj.id in self.ids[label_lower]:
-                    att = getattr(obj, attname, None)
-                    clone_map = self.map[label_lower]
+                    # att = getattr(obj, attname, None)
+                    # clone_map = self.map[label_lower]
 
-                    if clone_map.get(obj.id):
-                        old_obj = self.heap[label_lower].get(
-                            clone_map.get(obj.id)
-                        )
-                        setattr(old_obj, attname, clone_map.get(att))
-                        old_obj.save(update_fields=[attname])
+                    # if clone_map.get(obj.id):
+                    #     old_obj = self.heap[label_lower].get(
+                    #         clone_map.get(obj.id)
+                    #     )
+                    #     setattr(old_obj, attname, clone_map.get(att))
+                    #     old_obj.save(update_fields=[attname])
 
                     logging.debug('Skip M2O {0}.{1}'.format(
                         label_lower, obj.id

@@ -66,18 +66,13 @@ class Settings(models.Model):
 
 
 class Uroboros(CloneableModelMixin, models.Model):
-    CLONE_SETTINGS = {}
-
     title = models.CharField(max_length=255)
-    parent = models.ForeignKey(
+    uroboros = models.ForeignKey(
         'self',
         blank=True,
         null=True,
         related_name='children'
     )
-
-    class Meta:
-        ordering = ('id',)
 
     def __str__(self):
         return '{title} {id}'.format(title=self.title, id=self.id)
