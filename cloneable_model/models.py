@@ -3,7 +3,7 @@ import logging
 
 from collections import defaultdict
 
-from django.db import models
+from django.db import models, transaction
 from django.db.models import ManyToOneRel, ManyToManyField, OneToOneRel
 from django.db.models.fields import related_descriptors
 
@@ -25,6 +25,7 @@ class CloneableModelMixin(object):
         self.map = defaultdict(dict)
         self.heap = defaultdict(dict)
 
+    @transaction.atomic
     def _one_to_one_clone(self, model, new_model, relation, config, ext):
         """Clone one-to-one relations.
 
@@ -47,8 +48,14 @@ class CloneableModelMixin(object):
             title=new_model.title
         )
 
+        logging.debug('Clone O2O {0}.{1} => {2}.{3} ({4})'.format(
+            model._meta.label_lower, model.id,
+            new_model._meta.label_lower, new_model.id, ext
+        ))
+
         self._recursive_clone(obj, new_obj, config)
 
+    @transaction.atomic
     def _many_to_one_clone(self, model, new_model, relation, config, ext):
         """Clone many-to-one relations.
 
@@ -75,14 +82,14 @@ class CloneableModelMixin(object):
                     att = getattr(obj, attname, None)
                     clone_map = self.map[label_lower]
 
-                    # if clone_map.get(obj.id):
-                    #     old_obj = self.heap[label_lower].get(
-                    #         clone_map.get(obj.id)
-                    #     )
-                    #     setattr(old_obj, attname, clone_map.get(att))
-                    #     old_obj.save(update_fields=[attname])
+                    if clone_map.get(obj.id):
+                        old_obj = self.heap[label_lower].get(
+                            clone_map.get(obj.id)
+                        )
+                        setattr(old_obj, attname, clone_map.get(att))
+                        old_obj.save(update_fields=[attname])
 
-                    logging.debug('Skip {0}.{1}'.format(
+                    logging.debug('Skip M2O {0}.{1}'.format(
                         label_lower, obj.id
                     ))
 
@@ -106,8 +113,14 @@ class CloneableModelMixin(object):
                 if obj._meta.model is not new_model._meta.model:
                     new_kwargs.update({attname: new_model.id})
 
+                logging.debug('Clone M2O {0}.{1} => {2}.{3} ({4})'.format(
+                    model._meta.label_lower, model.id,
+                    new_model._meta.label_lower, new_model.id, ext
+                ))
+
                 self._recursive_clone(obj, new_obj, config, new_kwargs)
 
+    @transaction.atomic
     def _many_to_many_clone(self, model, new_model, relation, config, ext):
         """Clone many-to-many relations.
 
@@ -127,10 +140,26 @@ class CloneableModelMixin(object):
             new_objects = []
 
             for obj in objects:
-                new_obj = obj
+                label_lower = obj._meta.label_lower
+
+                if obj.id in self.ids[label_lower]:
+                    logging.debug('Skip M2M {0}.{1}'.format(
+                        label_lower, obj.id
+                    ))
+
+                    continue
+
+                new_obj = copy.copy(obj)
                 new_obj.pk = None
                 new_obj.save()
                 new_objects.append(new_obj)
+
+                logging.debug('Clone M2M {0}.{1} => {2}.{3} ({4})'.format(
+                    obj._meta.label_lower, obj.id,
+                    new_obj._meta.label_lower, new_obj.id, ext
+                ))
+
+                self._recursive_clone(obj, new_obj, config, ext)
 
             getattr(new_model, attname).add(*new_objects)
 
@@ -146,11 +175,6 @@ class CloneableModelMixin(object):
 
         """
         config = config or {}
-
-        logging.debug('Clone {0}.{1} => {2}.{3} ({4})'.format(
-            model._meta.label_lower, model.id,
-            new_model._meta.label_lower, new_model.id, ext
-        ))
 
         for rel in model._meta.get_fields():
             if isinstance(rel, OneToOneRel):
